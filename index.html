@@ -218,6 +218,9 @@
 
   .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .mt { margin-top:10px; }
+  .backup-note { margin:0 0 14px; color:var(--muted); font-size:14px; }
+  .backup-note code { background:rgba(0,140,153,.10); color:var(--accent-strong);
+    padding:2px 6px; border-radius:6px; font-size:13px; }
 
   /* Toast */
   .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translateX(-50%);
@@ -263,6 +266,18 @@
       <div class="weekdays" id="weekdays"></div>
       <div id="calGrid" class="cal-grid"></div>
       <p class="cal-hint">Swipe left or right to change month.</p>
+    </section>
+
+    <!-- BACKUP -->
+    <section class="card">
+      <div class="card-head"><h2>Backup</h2></div>
+      <p class="backup-note">Save a portable <code>.planner</code> file to iCloud / Files / OneDrive so your tasks &amp; calendar are safe. Import one here to restore it on any device. Everything stays on your device.</p>
+      <input id="importInput" type="file" accept=".planner,application/json" hidden />
+      <div class="row2">
+        <button id="exportBtn" class="btn gold">Export</button>
+        <button id="importBtn" class="btn amber">Import</button>
+      </div>
+      <button id="saveAsBtn" class="btn ghost mt">Save As…</button>
     </section>
   </main>
 
@@ -477,6 +492,39 @@
     }
     function closeDetail(){ $("#detailOverlay").hidden=true; editingTodoId=null; renderReveal(); }
 
+    /* ================= BACKUP (export / import) ================= */
+    function exportObj(){ return { appName:APP.appName, appVersion:APP.appVersion, fileType:APP.fileType,
+      libraryName:state.libraryName, exportedAt:new Date().toISOString(), updatedAt:state.updatedAt,
+      todos:state.todos, events:state.events }; }
+    function safeName(){ return (state.libraryName||"calendar-planner").replace(/[^a-z0-9\-_]+/gi,"_"); }
+    function exportDownload(){
+      var blob=new Blob([JSON.stringify(exportObj(),null,2)],{type:"application/json"});
+      var url=URL.createObjectURL(blob), a=document.createElement("a");
+      a.href=url; a.download=safeName()+".planner"; document.body.appendChild(a); a.click();
+      document.body.removeChild(a); setTimeout(function(){ URL.revokeObjectURL(url); },1000);
+      toast("Exported "+a.download);
+    }
+    function exportSaveAs(){
+      if(!window.showSaveFilePicker){ exportDownload(); return; }
+      window.showSaveFilePicker({ suggestedName:safeName()+".planner",
+        types:[{ description:"Calendar Planner file", accept:{ "application/json":[".planner"] } }] })
+        .then(function(h){ return h.createWritable(); })
+        .then(function(w){ return w.write(JSON.stringify(exportObj(),null,2)).then(function(){ return w.close(); }); })
+        .then(function(){ toast("Saved"); })
+        .catch(function(e){ if(e && e.name==="AbortError") return; exportDownload(); });
+    }
+    function importText(text){
+      var data; try{ data=JSON.parse(text); }catch(e){ toast("Not a valid .planner file",true); return; }
+      if(!data || (data.fileType!=="planlib" && data.fileType!=="planner") || !Array.isArray(data.todos)){
+        toast("Unrecognized file format",true); return; }
+      state.todos=data.todos;
+      state.events=(data.events && typeof data.events==="object") ? data.events : {};
+      state.libraryName=data.libraryName||"My Planner";
+      state.ui={ revealed:false };            // private tasks stay hidden until code entered
+      persist(); renderReveal(); renderCalendar();
+      toast("Imported "+state.todos.length+" task"+(state.todos.length===1?"":"s"));
+    }
+
     /* ================= CALENDAR ================= */
     var WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
     var MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -607,6 +655,13 @@
       na.addEventListener("keydown",function(e){ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); addAct(); } });
       $("#addAct").addEventListener("click",addAct);
       $("#dayClose").addEventListener("click",function(){ $("#dayOverlay").hidden=true; });
+
+      // backup
+      $("#exportBtn").addEventListener("click",exportDownload);
+      $("#saveAsBtn").addEventListener("click",exportSaveAs);
+      $("#importBtn").addEventListener("click",function(){ $("#importInput").click(); });
+      $("#importInput").addEventListener("change",function(e){ var f=e.target.files[0]; if(!f) return;
+        var r=new FileReader(); r.onload=function(){ importText(r.result); }; r.readAsText(f); e.target.value=""; });
 
       // tap backdrop to close sheets
       $all(".overlay").forEach(function(ov){ ov.addEventListener("click",function(e){
