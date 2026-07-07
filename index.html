@@ -200,6 +200,39 @@
     border:1.5px dashed var(--input-border); background:rgba(255,255,255,.6); color:var(--accent-strong);
     cursor:pointer; font-size:26px; }
 
+  /* Notes blocks (text + headers) */
+  .add-actions { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  #dBlocks:empty { display:none; }
+  .blk-item { position:relative; margin-bottom:10px; }
+  .blk-head { width:100%; padding:12px 40px 12px 14px; border:1.5px solid var(--input-border);
+    border-radius:var(--r-input); background:#fff; color:var(--ink); outline:none;
+    font-family:var(--serif); font-size:18px; font-weight:600; }
+  .blk-head:focus { border-color:var(--teal-focus); box-shadow:0 0 0 4px rgba(124,235,216,.28); }
+  .blk-text { width:100%; padding:12px 40px 12px 14px; border:1.5px solid var(--input-border);
+    border-radius:var(--r-input); background:#fff; color:var(--ink); outline:none;
+    resize:none; overflow:hidden; line-height:1.45; font-size:16px; }
+  .blk-text:focus { border-color:var(--teal-focus); box-shadow:0 0 0 4px rgba(124,235,216,.28); }
+  .blk-rm { position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%;
+    border:none; background:rgba(16,40,41,.08); color:var(--danger); font-size:17px; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; }
+
+  /* Links & videos */
+  #dLinks:empty { display:none; }
+  .linkrow { margin-bottom:12px; }
+  .linkurl { width:100%; padding:12px 14px; border:1.5px solid var(--input-border);
+    border-radius:var(--r-input); background:#fff; color:var(--ink); outline:none; font-size:15px; }
+  .linkurl:focus { border-color:var(--teal-focus); box-shadow:0 0 0 4px rgba(124,235,216,.28); }
+  .linkbar { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .link-play, .link-open, .link-rm { border:none; cursor:pointer; font-weight:800; text-transform:uppercase;
+    letter-spacing:.05em; font-size:12px; padding:9px 14px; border-radius:14px; }
+  .link-play { background:linear-gradient(135deg,var(--teal),var(--teal-soft)); color:var(--ink); }
+  .link-open { background:var(--pill-bg); color:var(--accent-strong); border:1.5px solid var(--pill-border); text-decoration:none;
+    display:inline-flex; align-items:center; }
+  .link-rm { background:transparent; color:var(--danger); margin-left:auto; }
+  .yt-embed { position:relative; width:100%; aspect-ratio:16/9; border-radius:20px; overflow:hidden;
+    background:#000; box-shadow:0 14px 34px rgba(20,65,70,.14); margin-top:10px; }
+  .yt-embed iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
+
   /* Day activities */
   .act-item { display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px;
     padding:13px 2px; border-bottom:1px solid var(--field-line); }
@@ -292,10 +325,16 @@
         <label class="lbl">Task</label>
         <textarea id="dTitle" class="grow" rows="1" placeholder="Task title"></textarea>
       </div>
-      <div class="field">
-        <label class="lbl">Details</label>
-        <textarea id="dNotes" class="grow" rows="3" placeholder="Add more information, links, steps…"></textarea>
+      <label class="sub-title" style="margin-top:16px;">Notes</label>
+      <div id="dBlocks"></div>
+      <div class="add-actions">
+        <button type="button" class="btn ghost sm" id="addText">＋ Text</button>
+        <button type="button" class="btn ghost sm" id="addHeader">＋ Header</button>
       </div>
+
+      <label class="sub-title">Links &amp; videos</label>
+      <div id="dLinks"></div>
+      <button type="button" class="btn ghost sm" id="addLink" style="margin-top:10px;">＋ Add link / video</button>
       <div class="done-toggle mt" id="dDone">
         <span class="check" style="pointer-events:none">
           <svg viewBox="0 0 24 24" fill="none" stroke="#5A3B00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -450,20 +489,126 @@
     }
     function addTodo(){
       var el=$("#newTodo"); var v=el.value.trim(); if(!v){ el.focus(); return; }
-      state.todos.unshift({ id:uid(), title:v, notes:"", done:false, private:false, images:[], createdAt:new Date().toISOString() });
+      state.todos.unshift({ id:uid(), title:v, notes:"", blocks:[], links:[], done:false, private:false, images:[], createdAt:new Date().toISOString() });
       el.value=""; autoGrow(el); persist(); renderReveal();
+    }
+
+    /* ---- rich content: notes blocks + links/videos ---- */
+    function ensureRich(t){
+      if(!Array.isArray(t.blocks)){
+        t.blocks=[];
+        if(t.notes && String(t.notes).trim()){ t.blocks.push({ id:uid(), type:"text", value:t.notes }); }
+      }
+      if(!Array.isArray(t.links)) t.links=[];
+      return t;
+    }
+    function parseTime(s){
+      if(!s) return null; if(/^\d+$/.test(s)) return +s;
+      var sec=0,m; m=s.match(/(\d+)h/); if(m) sec+=(+m[1])*3600;
+      m=s.match(/(\d+)m/); if(m) sec+=(+m[1])*60;
+      m=s.match(/(\d+)s/); if(m) sec+=(+m[1]);
+      return sec||null;
+    }
+    function ytInfo(url){
+      if(!url) return null; url=String(url).trim(); if(!url) return null;
+      var id=null,m;
+      m=url.match(/(?:youtu\.be\/|\/embed\/|\/shorts\/|\/live\/|[?&]v=)([A-Za-z0-9_\-]{6,})/);
+      if(m){ id=m[1]; } else if(/^[A-Za-z0-9_\-]{6,}$/.test(url) && !/^https?:/i.test(url)){ id=url; }
+      if(!id) return null;
+      var start=null, t=url.match(/[?&](?:t|start)=([0-9hms]+)/); if(t) start=parseTime(t[1]);
+      return { id:id, start:start };
+    }
+    function ytEmbedSrc(info){
+      return "https://www.youtube-nocookie.com/embed/"+info.id+"?rel=0&modestbranding=1"+(info.start?("&start="+info.start):"");
+    }
+    function renderBlocks(t){
+      var wrap=$("#dBlocks"); wrap.innerHTML="";
+      (t.blocks||[]).forEach(function(b,i){
+        var div=document.createElement("div"); div.className="blk-item";
+        if(b.type==="header"){
+          var inp=document.createElement("input"); inp.type="text"; inp.className="blk-head";
+          inp.placeholder="Section header"; inp.value=b.value||"";
+          inp.addEventListener("input",function(){ b.value=inp.value; scheduleSave(); });
+          div.appendChild(inp);
+        } else {
+          var ta=document.createElement("textarea"); ta.className="blk-text"; ta.rows=2;
+          ta.placeholder="Write something…"; ta.value=b.value||"";
+          ta.addEventListener("input",function(){ b.value=ta.value; autoGrow(ta); scheduleSave(); });
+          div.appendChild(ta);
+          autoGrow(ta); setTimeout(function(){ autoGrow(ta); },0);
+        }
+        var rm=document.createElement("button"); rm.type="button"; rm.className="blk-rm"; rm.textContent="×";
+        rm.setAttribute("aria-label","Remove");
+        rm.addEventListener("click",function(){ t.blocks.splice(i,1); persist(); renderBlocks(t); });
+        div.appendChild(rm);
+        wrap.appendChild(div);
+      });
+    }
+    function addBlock(type){
+      var t=currentTodo(); if(!t) return; ensureRich(t);
+      t.blocks.push({ id:uid(), type:type, value:"" });
+      persist(); renderBlocks(t);
+      var items=$all("#dBlocks .blk-item"); var last=items[items.length-1];
+      if(last){ var f=last.querySelector("input,textarea"); if(f) f.focus(); }
+    }
+    function renderLinks(t){
+      var wrap=$("#dLinks"); wrap.innerHTML="";
+      (t.links||[]).forEach(function(lk,i){
+        var row=document.createElement("div"); row.className="linkrow";
+        var inp=document.createElement("input"); inp.type="url"; inp.className="linkurl";
+        inp.placeholder="Paste a YouTube or web link…"; inp.value=lk.url||"";
+        row.appendChild(inp);
+        var bar=document.createElement("div"); bar.className="linkbar";
+        var embed=document.createElement("div");
+        function refresh(){
+          bar.innerHTML=""; embed.innerHTML=""; embed.className="";
+          var url=(lk.url||"").trim(); var inf=ytInfo(url);
+          if(inf){
+            var play=document.createElement("button"); play.type="button"; play.className="link-play"; play.textContent="▶ Play here";
+            play.addEventListener("click",function(){
+              if(embed.className){ embed.className=""; embed.innerHTML=""; play.textContent="▶ Play here"; return; }
+              embed.className="yt-embed";
+              var f=document.createElement("iframe"); f.src=ytEmbedSrc(inf);
+              f.setAttribute("allow","accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+              f.setAttribute("allowfullscreen",""); f.setAttribute("referrerpolicy","strict-origin-when-cross-origin");
+              embed.appendChild(f); play.textContent="▨ Hide";
+            });
+            bar.appendChild(play);
+            var yo=document.createElement("a"); yo.className="link-open"; yo.textContent="YouTube ↗"; yo.target="_blank"; yo.rel="noopener";
+            yo.href="https://www.youtube.com/watch?v="+inf.id+(inf.start?("&t="+inf.start):"");
+            bar.appendChild(yo);
+          } else if(/^https?:\/\//i.test(url)){
+            var o=document.createElement("a"); o.className="link-open"; o.textContent="Open ↗"; o.target="_blank"; o.rel="noopener"; o.href=url;
+            bar.appendChild(o);
+          }
+          var rm=document.createElement("button"); rm.type="button"; rm.className="link-rm"; rm.textContent="Remove";
+          rm.addEventListener("click",function(){ t.links.splice(i,1); persist(); renderLinks(t); });
+          bar.appendChild(rm);
+        }
+        inp.addEventListener("input",function(){ lk.url=inp.value; scheduleSave(); refresh(); });
+        refresh();
+        row.appendChild(bar); row.appendChild(embed);
+        wrap.appendChild(row);
+      });
+    }
+    function addLink(){
+      var t=currentTodo(); if(!t) return; ensureRich(t);
+      t.links.push({ id:uid(), url:"" });
+      persist(); renderLinks(t);
+      var rows=$all("#dLinks .linkrow"); var last=rows[rows.length-1];
+      if(last){ var f=last.querySelector(".linkurl"); if(f) f.focus(); }
     }
 
     /* ---- detail sheet ---- */
     function openDetail(id){
       var t=state.todos.filter(function(x){ return x.id===id; })[0]; if(!t) return;
-      editingTodoId=id;
-      $("#dTitle").value=t.title||""; $("#dNotes").value=t.notes||"";
+      editingTodoId=id; ensureRich(t);
+      $("#dTitle").value=t.title||"";
       $("#dDone").classList.toggle("on", !!t.done);
       $("#dPrivate").classList.toggle("on", !!t.private);
-      renderThumbs(t);
+      renderBlocks(t); renderLinks(t); renderThumbs(t);
       $("#detailOverlay").hidden=false;
-      autoGrow($("#dTitle")); autoGrow($("#dNotes"));
+      autoGrow($("#dTitle"));
     }
     function currentTodo(){ return state.todos.filter(function(x){ return x.id===editingTodoId; })[0]; }
     function renderThumbs(t){
@@ -637,7 +782,9 @@
 
       // detail
       $("#dTitle").addEventListener("input",function(){ var t=currentTodo(); if(t){ t.title=this.value; autoGrow(this); scheduleSave(); } });
-      $("#dNotes").addEventListener("input",function(){ var t=currentTodo(); if(t){ t.notes=this.value; autoGrow(this); scheduleSave(); } });
+      $("#addText").addEventListener("click",function(){ addBlock("text"); });
+      $("#addHeader").addEventListener("click",function(){ addBlock("header"); });
+      $("#addLink").addEventListener("click",addLink);
       $("#dDone").addEventListener("click",function(){ var t=currentTodo(); if(!t) return; t.done=!t.done; this.classList.toggle("on",t.done); persist(); });
       $("#dPrivate").addEventListener("click",function(){ var t=currentTodo(); if(!t) return; t.private=!t.private; this.classList.toggle("on",t.private); persist(); renderReveal(); });
       $("#dPhotoInput").addEventListener("change",function(e){ handlePhotos(e.target.files); e.target.value=""; });

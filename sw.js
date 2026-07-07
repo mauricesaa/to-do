@@ -3,7 +3,7 @@
    on-device cache (so it keeps working even if the host is down or the link
    is briefly unreachable), and refreshed in the background whenever online.
    Bump CACHE when you change the app so phones pick up the new version. */
-var CACHE = "planner-v1";
+var CACHE = "planner-v3";
 var ASSETS = [
   "./",
   "./index.html",
